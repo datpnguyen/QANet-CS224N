@@ -18,16 +18,25 @@ class QANet(nn.Module):
         hidden_size (int): Number of features in the hidden state at each layer.
         dropout_main (float): Dropout rate between every two main layers.
     """
-    def __init__(self, word_vectors, hidden_size, char_embed_size, word_from_char_size, dropout_main, embed_encoder_num_convs, embed_encoder_kernel_size, embed_encoder_num_heads, embed_encoder_num_blocks, model_encoder_num_convs, model_encoder_kernel_size, model_encoder_num_heads, model_encoder_num_blocks):
+    def __init__(self, word_vectors, hidden_size, char_embed_size, word_from_char_size, dropout_main,
+                 embed_encoder_num_convs, embed_encoder_kernel_size, embed_encoder_num_heads, embed_encoder_num_blocks,
+                 model_encoder_num_convs, model_encoder_kernel_size, model_encoder_num_heads, model_encoder_num_blocks):
         super(QANet, self).__init__()
         
         self.emb = Embedding(word_vectors, hidden_size, char_embed_size, word_from_char_size)
-        self.embed_encoder = EncoderLayer(hidden_size, embed_encoder_num_convs, embed_encoder_kernel_size, embed_encoder_num_heads, embed_encoder_num_blocks)
+        self.embed_encoder = EncoderLayer(hidden_size,
+                                          embed_encoder_num_convs, embed_encoder_kernel_size,
+                                          embed_encoder_num_heads,
+                                          embed_encoder_num_blocks)
         self.cq_att = BiDAFAttention(hidden_size)
-        self.model_encoder = EncoderLayer(hidden_size, model_encoder_num_convs, model_encoder_kernel_size, model_encoder_num_heads, model_encoder_num_blocks)
+        self.model_encoder = EncoderLayer(hidden_size,
+                                          model_encoder_num_convs, model_encoder_kernel_size,
+                                          model_encoder_num_heads, model_encoder_num_blocks)
         self.output = QANetOutput(hidden_size)
         
-        self.pre_model_encoder = nn.Linear(4 * hidden_size, hidden_size) ## use between context-query attention and model encoder to make sure the input has the same size.
+        ## Linear layer between context-query attention and model encoder: use to make sure the input has the same size.
+        self.pre_model_encoder = nn.Linear(4 * hidden_size, hidden_size)
+        
         self.dropout = nn.Dropout(dropout_main) ## Dropout between layers
 
     def forward(self, cw_idxs, cc_idxs, qw_idxs, qc_idxs):
@@ -41,13 +50,15 @@ class QANet(nn.Module):
         ## shape (batch_size, c_len, hidden_size) and (batch_size, q_len, hidden_size), respectively
         x, y = self.dropout(self.emb(cw_idxs, cc_idxs)), self.dropout(self.emb(qw_idxs, qc_idxs))
         
-        ## Compute PositionEncoder(x). This value is saved because it will be re-used many times in the model encoder layers.
+        ## Compute PositionEncoder(x).
+        ## This value is memorized because it will be re-used many times in the model encoder layers.
         ## PositionEncoder(y) will only be used once and just doesn't need to be saved.
         pe_c = PositionEncoder(x) ## shape (c_len, hidden_size)
         
         ## Pass through embedding encoding layer
         ## shape (batch_size, c_len, hidden_size) and (batch_size, q_len, hidden_size), respectively
-        x, y = self.dropout(self.embed_encoder(x, pe_c, c_is_pad)), self.dropout(self.embed_encoder(y, PositionEncoder(y), q_is_pad))
+        x = self.dropout(self.embed_encoder(x, pe_c, c_is_pad)),
+        y = self.dropout(self.embed_encoder(y, PositionEncoder(y), q_is_pad))
         
         ## Context-query bi-attention, then map back to hidden_size
         bi_att = self.cq_att(x, y, c_is_pad, q_is_pad) ## shape (batch_size, c_len, 4 * hidden_size)
