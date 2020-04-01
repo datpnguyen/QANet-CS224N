@@ -47,7 +47,12 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = QANet(word_vectors, args.hidden_size, args.char_embed_size, args.word_from_char_size, args.dropout_main, args.embed_encoder_num_convs, args.embed_encoder_conv_kernel_size, args.embed_encoder_num_heads, args.embed_encoder_num_blocks, args.model_encoder_num_convs, args.model_encoder_conv_kernel_size, args.model_encoder_num_heads, args.model_encoder_num_blocks)
+    model = QANet(word_vectors, args.hidden_size, args.char_embed_size, args.word_from_char_size,
+                  args.dropout_main,
+                  args.embed_encoder_num_convs, args.embed_encoder_conv_kernel_size,
+                  args.embed_encoder_num_heads, args.embed_encoder_num_blocks,
+                  args.model_encoder_num_convs, args.model_encoder_conv_kernel_size,
+                  args.model_encoder_num_heads, args.model_encoder_num_blocks)
     model = nn.DataParallel(model, args.gpu_ids)
     if args.load_path:
         log.info(f'Loading checkpoint from {args.load_path}...')
@@ -68,7 +73,8 @@ def main(args):
     # Get optimizer and scheduler
     # Increase LR from 0 to args.lr in num_warmup_steps steps, then keep constant LR
     optimizer = optim.Adam(model.parameters(), args.lr, betas=(0.8, 0.999), eps=1e-07, weight_decay=args.l2_wd)
-    scheduler = sched.LambdaLR(optimizer, lambda s: math.log(1+s)/math.log(args.num_warmup_steps) if s < args.num_warmup_steps else 1) 
+    scheduler = sched.LambdaLR(optimizer,
+                               lambda s: math.log(1+s)/math.log(args.num_warmup_steps) if s < args.num_warmup_steps else 1) 
 
     # Get data loader
     log.info('Building dataset...')
