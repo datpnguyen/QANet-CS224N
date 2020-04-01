@@ -43,7 +43,12 @@ def main(args):
 
     # Get model
     log.info('Building model...')
-    model = QANet(word_vectors, args.hidden_size, args.char_embed_size, args.word_from_char_size, args.dropout_main, args.embed_encoder_num_convs, args.embed_encoder_conv_kernel_size, args.embed_encoder_num_heads, args.embed_encoder_num_blocks, args.model_encoder_num_convs, args.model_encoder_conv_kernel_size, args.model_encoder_num_heads, args.model_encoder_num_blocks)
+    model = QANet(word_vectors, args.hidden_size, args.char_embed_size, args.word_from_char_size,
+                  args.dropout_main,
+                  args.embed_encoder_num_convs, args.embed_encoder_conv_kernel_size,
+                  args.embed_encoder_num_heads, args.embed_encoder_num_blocks,
+                  args.model_encoder_num_convs, args.model_encoder_conv_kernel_size,
+                  args.model_encoder_num_heads, args.model_encoder_num_blocks)
     model = nn.DataParallel(model, gpu_ids)
     log.info(f'Loading checkpoint from {args.load_path}...')
     model = util.load_model(model, args.load_path, gpu_ids, return_step=False)
