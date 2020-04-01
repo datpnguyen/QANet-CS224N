@@ -10,10 +10,12 @@ from util import masked_softmax
 
 
 class Embedding(nn.Module):
-    """Embedding layer used by BiDAF. Word vectors are obtained by concatenating pre-trained word-level vectors and CharEmbedding vectors.
+    """Embedding layer used by BiDAF.
+    Word vectors are obtained by concatenating pre-trained word-level vectors and CharEmbedding vectors.
     Word vectors are further refined using dropout and a 2-layer Highway Encoder
     (see `HighwayEncoder` class for details).
-    Note that unlike the orignal paper, we apply the projection down to hidden_size BEFORE applying highway network. This way the model uses fewer parameters and is faster.
+    Note that unlike the orignal paper, we apply the projection down to hidden_size BEFORE applying highway network.
+    This way the model uses fewer parameters and is faster.
 
     Args:
         word_vectors (torch.Tensor): Pre-trained word vectors.
@@ -47,7 +49,8 @@ class Embedding(nn.Module):
     	
     	This method applies linear projections separately instead of concatenating the input tensors to save a little memory.
     	"""
-    	## Look up embeddings. Shapes (batch_size, text_len, word_vectors.size(1)) and (batch_size, text_len, word_from_char_size), respectively
+    	## Look up embeddings.
+	## Shapes (batch_size, text_len, word_vectors.size(1)) and (batch_size, text_len, word_from_char_size), respectively
     	x, y = self.wordDropout(self.word_embed(text_word_ids)), self.charDropout(self.char_embed(text_char_ids))
     	
     	## Apply linear layers. Shapes both (batch_size, text_len, hidden_size)
@@ -65,13 +68,21 @@ class WordFromCharEmbedding(nn.Module):
 	"""
 	
 	def __init__(self, char_embed_size, word_from_char_size):
-		super(WordFromCharEmbedding, self).__init__()		
-
-		char_vocab_size = 1376 ## More generally, this can be computed by importing char2idx_dic from util and call len(char2idx_dic())		
+		super(WordFromCharEmbedding, self).__init__()
+		
+		## There are 1376 characters used in our dataset
+		## More generally, char_vocab_size can be computed by importing char2idx_dic from util and call len(char2idx_dic())
+		char_vocab_size = 1376
+		
 		char_embed_weight = torch.Tensor(char_vocab_size, char_embed_size)
 		nn.init.normal_(char_embed_weight)
-		char_embed_weight[0].fill_(0) ## Initialize char vector of --NULL-- to be 0. 
-		char_embed_weight[1].fill_(0) ## Initialize char vector of --OOV-- to be 0. However, unlike the char vector of --NULL--, this char vector does receive gradients.				
+		
+		## Initialize char vector of --NULL-- to be 0. 
+		char_embed_weight[0].fill_(0)
+		
+		## Initialize char vector of --OOV-- to be 0.
+		## However, unlike the char vector of --NULL--, this char vector does receive gradients.				
+		char_embed_weight[1].fill_(0) 
 		self.char_embedding = nn.Embedding.from_pretrained(char_embed_weight, freeze=False, padding_idx=0)
 		del char_embed_weight
 		
@@ -79,7 +90,8 @@ class WordFromCharEmbedding(nn.Module):
 		
 	def forward(self, x):
 		"""
-		x: input tensor of shape (batch_size, text_len, max_word_len). Here text_len is the length of the context/query; max_word_len is the longest word in the batch.
+		x: input tensor of shape (batch_size, text_len, max_word_len).
+			Here text_len is the length of the context/query; max_word_len is the longest word in the batch.
 		Output: Tensor of size (batch_size, text_len, word_from_char_size)
 		"""		
 		x = self.char_embedding(x) ## size (batch_size, text_len, max_word_len, char_embed_size)
@@ -88,7 +100,8 @@ class WordFromCharEmbedding(nn.Module):
 		## Reshape and transpose x to follow the convention of nn.Conv1D:
 		## This module can only take 3D tensors, and the number of input channels has to be the middle dimension
 		## Using view() before transpose() means we don't need to apply contiguous()
-		x = x.view(-1, max_word_len, char_embed_size).transpose(1,2) ## size: (batch_size * text_len, char_embed_size, max_word_len).
+		## size: (batch_size * text_len, char_embed_size, max_word_len).
+		x = x.view(-1, max_word_len, char_embed_size).transpose(1,2) 
 		
 		x = self.conv(x) ## size: (batch_size * text_len, word_from_char_size, max_word_len)
 		x, _ = torch.max(x, 2) ## size: (batch_size * text_len, word_from_char_size)
@@ -127,9 +140,12 @@ class HighwayEncoder(nn.Module):
         
         
 def PositionEncoder(x):
-	"""Positional Encoding layer with fixed encoding vector based on sin and cos, as in http://nlp.seas.harvard.edu/2018/04/03/attention.html#position-wise-feed-forward-networks
-	Implemented as a function instead of a class because we may not know the shape of x (in particular, the text_len dimension) before hand.
-	This function returns just the fixed PE vector instead of the sum x + PE. This is to avoid computing PE again and again in repeated encoder blocks.
+	"""Positional Encoding layer with fixed encoding vector based on sin and cos,
+	as in http://nlp.seas.harvard.edu/2018/04/03/attention.html#position-wise-feed-forward-networks
+	Implemented as a function instead of a module because we may not know the shape of x
+	(in particular, the text_len dimension) before hand.
+	This function returns just the fixed PE vector instead of the sum x + PE:
+	This is to avoid computing PE again and again in repeated encoder blocks.
 	
 	Arguments:
 	x: input tensor of shape (batch_size, text_len, input_dim)
@@ -150,32 +166,42 @@ def PositionEncoder(x):
 	## angles[position, i] = position * 10000^(- 2i / input_dim)
 	angles = torch.ger(position, div_term)
 	
-	## Interweave sin(angles) and cos(angles)	
-	pe = torch.stack( (torch.sin(angles), torch.cos(angles)), dim = 2).view(text_len, input_dim) ## shape (text_len, input_dim)
+	## Interweave sin(angles) and cos(angles)
+	## shape (text_len, input_dim)
+	pe = torch.stack( (torch.sin(angles), torch.cos(angles)), dim = 2).view(text_len, input_dim) 
 	return pe
 	
 	
 class DepthwiseSeparableConvolution(nn.Module):
 	"""Depthwise Separable Convolutional Layer used in QANet encoder block
-	Illustration for depthwise separable convolution: https://towardsdatascience.com/a-basic-introduction-to-separable-convolutions-b99ec3102728
-	Input is first passed through LayerNorm, then a Depthwise Separable Convolutional Layer. Leakly ReLU activation is applied and a skip connection is added at the end.		
+	Illustration for depthwise separable convolution:
+	https://towardsdatascience.com/a-basic-introduction-to-separable-convolutions-b99ec3102728
+	Input is first passed through LayerNorm, then a Depthwise Separable Convolutional Layer.
+	Leakly ReLU activation is applied and a skip connection is added at the end.		
 	
 	Arguments:
-	input_dim (int): Dimension of each (non-batched) input vector. In the Conv1D documentation, this is referred to as the number of input channels. 	
-	kernel_size (int): Kernel size. Expected to be an odd number so that the output has the same shape as the input - otherwise the skip connection doesn't make sense.
+	input_dim (int): Dimension of each (non-batched) input vector.
+		In the Conv1D documentation, this is referred to as the number of input channels. 	
+	kernel_size (int): Kernel size.
+		Expected to be an odd number so that the output has the same shape as the input,
+		otherwise the skip connection doesn't make sense.
 	p_dropout (float): Dropout rate.
 	"""
 	def __init__(self, input_dim, kernel_size, p_dropout):
 		super(DepthwiseSeparableConvolution, self).__init__()
 		
 		## Depthwise convolution layer.
-		## Padding size is set to kernel_size // 2. This would guarantee that (1) the kernel is never too big and (2) the output text_len is the same as the input text_len.
-		## Bias is set to False because we will add bias in the pointwise convolution layer. Having two biases is redundant.
-		self.depthwise = nn.Conv1d(input_dim, input_dim, kernel_size, padding = kernel_size // 2, groups = input_dim, bias = False)
+		## Padding size is set to kernel_size // 2. This would guarantee that 
+		##	(1) the kernel is never too big, and
+		##	(2) the output text_len is the same as the input text_len.
+		## Bias is set to False because we will add bias in the pointwise convolution layer.
+		self.depthwise = nn.Conv1d(input_dim, input_dim, kernel_size, padding = kernel_size // 2,
+					   groups = input_dim, bias = False)
 		
 		## Pointwise convolution layer
-		## We use nn.Linear instead of nn.Conv1D with kernel size 1 because they do the same thing but nn.Linear is faster according to https://stackoverflow.com/questions/55576314/conv1d-with-kernel-size-1-interpretation 
-		## We are setting output_dim to be equal to input_dim even though it doesn't have to be in general. This is so that a skip connection can be used.
+		## We use nn.Linear instead of nn.Conv1D with kernel size 1 - they do the same thing
+		## We are setting output_dim to be equal to input_dim even though it doesn't have to be in general.
+		## This is so that a skip connection can be used.
 		self.pointwise = nn.Linear(input_dim, input_dim)
 		
 		## Layer normalization across the features, i.e. across the last dimension that is equal to input_dim
@@ -185,13 +211,15 @@ class DepthwiseSeparableConvolution(nn.Module):
 		
 	def forward(self, x):
 		"""
-		x: input tensor of shape (batch_size, text_len, input_dim). Here text_len is the length of the context/question.
+		x: input tensor of shape (batch_size, text_len, input_dim).
+			Here text_len is the length of the context/question.
 		The shape stays the same (batch_size, text_len, input_dim) through every step.
 		"""
 		skip_connection = x
 		x = self.layernorm(x)
 		
-		## Call transpose(1,2) back and forth because nn.Conv1D requires the number of input channels to be the MIDDLE dimension.
+		## Call transpose(1,2) back and forth because nn.Conv1D requires the number of input channels to be
+		## the MIDDLE dimension.
 		x = self.depthwise(x.transpose(1,2)).transpose(1,2)
 		
 		x = self.pointwise(x)		
@@ -222,21 +250,27 @@ class SelfAttention(nn.Module):
 		
 	def forward(self, x, is_pad):
 		"""
-		x: input tensor of shape (batch_size, text_len, input_dim). Here text_len is the length of the context/question.
+		x: input tensor of shape (batch_size, text_len, input_dim).
+			Here text_len is the length of the context/question.
 		is_pad: tensor of shape(batch_size, text_len). Hold value TRUE for pad tokens. 
 		Output: tensor of the same shape as the input, (batch_size, text_len, input_dim)
 		"""
 		skip_connection = x
 		
 		x = self.layernorm(x) ## shape (batch_size, text_len, input_dim)
-		x = x.transpose(0,1) ## shape (text_len, batch_size, input_dim). Here transpose() is needed because of the convention of nn.MultiheadAttention.
-		x, _ = self.attention(x, x, x, key_padding_mask = is_pad, need_weights=False) ## shape (text_len, batch_size, input_dim). 
+		
+		## shape (text_len, batch_size, input_dim).
+		## Here transpose() is needed because of the convention of nn.MultiheadAttention.
+		x = x.transpose(0,1)		
+		x, _ = self.attention(x, x, x, key_padding_mask = is_pad, need_weights=False) 
+		
 		x = x.transpose(0,1) ## shape (batch_size, text_len, input_dim)		
 		return self.dropout(x) + skip_connection
 
 class FeedForward(nn.Module):
 	"""Feed forward layer with ReLU activation.
-	Input is first passed through LayerNorm, then a linear layer, then non-linear activation, then another linear layer. A skip connection is added at the end.
+	Input is first passed through LayerNorm, then a linear layer, then non-linear activation, then another linear layer.
+	A skip connection is added at the end.
 	
 	Arguments:
 	input_dim (int): Dimension of each (non-batched) input vector.
@@ -269,16 +303,20 @@ class EncoderBlock(nn.Module):
 	"""One encoder block in the QANet model:	
 	Composition of: PositionEncoder -> DepthwiseSeparableConvolution * num_convs -> SelfAttention -> FeedForward.
 	
-	REMARK 1: Earlier layers have smaller dropout rates. This is to serve the following remark in the QANet paper:
-	..."within EACH embedding or model encoder layer, each sublayer l has survival probability p_l= 1−l/L (1−p_L), where L is the last layer and p_L= 0.9." 
+	REMARK: Earlier layers have smaller dropout rates, as described in the QANet paper:
+	..."within EACH embedding or model encoder layer, each sublayer l has survival probability p_l= 1−l/L (1−p_L),
+	where L is the last layer and p_L= 0.9." 
 	
 	Arguments:
-	input_dim (int): Dimension of each (non-batched) input vector. The output vector of each sublayer will also have the same dimension
+	input_dim (int): Dimension of each (non-batched) input vector.
+		The output vector of each sublayer will also have the same dimension
 	num_convs (int): Number of convolutional layers inside the block
 	kernel_size (int): Kernel size of each convolutional layer
 	num_heads (int): Number of attention heads in each block
-	num_blocks (int): Number of EncoderBlock(s) in the embedding/model encoder layer. This is needed to compute the dropout rate, see REMARK 1 above and examples below.
-	block_index (int): The (0-based) index of the current EncoderBlock in the embedding/model encoder layer. This is needed to compute the dropout rate, see REMARK 1 above and examples below.
+	num_blocks (int): Number of EncoderBlock(s) in the embedding/model encoder layer.
+		This is needed to compute the dropout rate, see REMARK above and examples below.
+	block_index (int): The (0-based) index of the current EncoderBlock in the embedding/model encoder layer.
+		This is needed to compute the dropout rate, see REMARK above and examples below.
 	
 	Examples:
 	In the original paper, for the model encoder layer, num_block = 7, and block_index ranges from 0 to 6.
@@ -288,19 +326,29 @@ class EncoderBlock(nn.Module):
 		super(EncoderBlock, self).__init__()
 		
 		## Compute dropout rates, see the REMARK 1 above
-		layers_per_block = 3 + num_convs ## We are counting PositionEncoder, num_convs * DepthwiseSeparableConvolution, SelfAttention, and FeedForward.
-		L = layers_per_block*num_blocks
-		l = 1 + layers_per_block*block_index ## This compute the l (in the dropout rate formula above) for the first sublayer of the current block, which is PositionEncoder
+		## The layers in each block are:
+		## PositionEncoder, num_convs * DepthwiseSeparableConvolution, SelfAttention, and FeedForward.
+		layers_per_block = 3 + num_convs
+		
+		## Total number of layers in num_block blocks. This is the big L in the dropout rate formula above
+		L = layers_per_block*num_blocks 
+		
+		## The (1-based) index of the the first sublayer of the current block, which is PositionEncoder
+		## This is the small l in the dropout rate formula above
+		l = 1 + layers_per_block*block_index 
 		
 		self.PE_dropout = nn.Dropout(l * 0.1/L)
 		
 		## Convolutional layers.
-		self.convs = nn.Sequential(*[DepthwiseSeparableConvolution(input_dim, kernel_size, (l + i) * 0.1/L ) for i in range(1,1+num_convs)])
+		self.convs = nn.Sequential(*[DepthwiseSeparableConvolution(input_dim, kernel_size, (l + i) * 0.1/L )
+					     for i in range(1,1+num_convs)])
 		
-		## Self-attention layer. This is the (2 + num_convs)-th sublayer in the block, so the dropout rate is (l + 1 + num_convs)*0.1/L
+		## Self-attention layer.
+		## This is the (2 + num_convs)-th sublayer in the block, so the dropout rate is (l + 1 + num_convs)*0.1/L
 		self.attention = SelfAttention(input_dim, num_heads, (l + 1 + num_convs)*0.1/L )
 		
-		## FeedForward layers. This is the (3 + num_convs)-th layer in the block, so the dropout rate is (l + 2 + num_convs)*0.1/L
+		## FeedForward layers.
+		## This is the (3 + num_convs)-th layer in the block, so the dropout rate is (l + 2 + num_convs)*0.1/L
 		self.feedfwd = FeedForward(input_dim, (l + 2 + num_convs)*0.1/L )
 		
 	def forward(self, x, pe, is_pad):
@@ -317,7 +365,8 @@ class EncoderBlock(nn.Module):
 		return x
 
 class EncoderLayer(nn.Module):
-	"""Wrap multiple encoder blocks together. Use to construct one Embedding Encoder Layer or one Model Encoder Layer in QANet.
+	"""Wrap multiple encoder blocks together.
+	This module is used to construct one Embedding Encoder Layer or one Model Encoder Layer in QANet.
 	Note that in the case of Model Encoder, this is just ONE layer in the QANet diagram, not 3 repeated layers.
 	
 	Arguments:
@@ -330,7 +379,9 @@ class EncoderLayer(nn.Module):
 	def __init__(self, input_dim, num_convs, kernel_size, num_heads, num_blocks):
 		super(EncoderLayer, self).__init__()
 		
-		self.encoder_blocks = nn.ModuleList([EncoderBlock(input_dim, num_convs, kernel_size, num_heads, num_blocks, block_index) for block_index in range(num_blocks)])
+		self.encoder_blocks = nn.ModuleList([
+			EncoderBlock(input_dim, num_convs, kernel_size, num_heads, num_blocks, block_index)
+			for block_index in range(num_blocks)])
 		
 	def forward(self, x, pe, is_pad):
 		"""
@@ -345,7 +396,8 @@ class EncoderLayer(nn.Module):
 
 class BiDAFAttention(nn.Module):
     """Bidirectional attention originally used by BiDAF.
-    This can be reused in our QANet model without any modification. Here hidden_size means the same thing as input_dim in other modules in this file.
+    This can be reused in our QANet model without any modification.
+    Here hidden_size means the same thing as input_dim in other modules in this file.
 
     Bidirectional attention computes attention in two directions:
     The context attends to the query and the query attends to the context.
