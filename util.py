@@ -611,7 +611,8 @@ def discretize_original(p_start, p_end, max_len=15, no_answer=False):
 
 def discretize(p_start, p_end, max_len=15, no_answer=True):
     """Discretize soft predictions to get start and end indices.
-    Compared to discretize_original, which is the default method in the starter code, this method makes the model predict N/A more often.
+    Compared to discretize_original, which is the default method in the starter code,
+    this method makes the model predict N/A more often.
     This method only works for SQuAD 2.0.
 
     Choose the pair `(i, j)` of indices that maximizes `p1[i] * p2[j]`
